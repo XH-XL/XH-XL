@@ -1,6 +1,6 @@
-# 👋 Hi, I'm [XiaoWu]
+# 👋 Hi, I'm [XiaoLI]
 
-[![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&pause=1000&width=435&lines=%E6%88%91%E6%98%AFXiaoWu%E5%91%80%EF%BC%8C%E6%AC%A2%E8%BF%8E%E6%9D%A5%E5%88%B0%E6%88%91%E7%9A%84%E4%B8%BB%E9%A1%B5)](https://git.io/typing-svg)
+[![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&pause=1000&color=7278F7&width=435&lines=Hi%EF%BC%81%E6%AC%A2%E8%BF%8E%E5%90%84%E4%BD%8D%E7%9A%84%E5%85%B3%E7%85%A7;%E6%9C%89%E4%BB%80%E4%B9%88%E9%97%AE%E9%A2%98%E8%AF%B7%E5%A4%9A%E5%A4%9A%E5%85%B3%E7%85%A7)](https://git.io/typing-svg)
 
 💻 Full Stack Developer | 🚀 Vue/React/SpringBoot 实践者 | 🎮 游戏爱好者 |热爱数学
 
@@ -25,10 +25,10 @@
 
 ## 📌 关于我
 
-- 🔭 目前专注于：[vue3/html+python Web开发  ]
+- 🔭 目前专注于：[python，照顾美人]
 - 🌱 学习中：[算法 ，数学建模 ，c语言基础]
-- 📫 联系我：[邮箱:`rainycrew@qq.com` ]
-- ⚡ 趣味：[「摄影、数学、vrchat」]
+- 📫 联系我：[邮箱:`2878233217@qq.com` ]
+- ⚡ 趣味：[「数学、vrchat，低级趣味」]
 ![图片描述](VRChat_2026-08-17_00-00-33.634_1920x1080.png)
 
 ————————————————
