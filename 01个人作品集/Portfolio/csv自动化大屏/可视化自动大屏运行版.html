@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSV 自动大屏</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; font-family: "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif; }
+
+  body {
+    background: #f4fbf9;
+    position: relative;
+    color: #0f3d34;
+  }
+
+  /* 背景柔光晕 */
+  .glow {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(90px);
+    opacity: 0.55;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .glow.g1 { width: 520px; height: 520px; background: #2ee6a8; top: -120px; left: -120px; }
+  .glow.g2 { width: 560px; height: 560px; background: #34d8e6; bottom: -160px; right: -140px; }
+  .glow.g3 { width: 380px; height: 380px; background: #7af0c8; top: 40%; left: 55%; transform: translate(-50%, -50%); opacity: 0.35; }
+
+  /* ============ 上传页面 ============ */
+  #uploadPage {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .upload-panel {
+    width: 680px;
+    max-width: 92vw;
+    padding: 56px 48px 44px;
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(24px) saturate(1.2);
+    -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 24px 60px rgba(20, 80, 70, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+  .upload-panel.dragover {
+    background: rgba(180, 255, 230, 0.6);
+    border-color: #2ee6a8;
+    box-shadow: 0 24px 70px rgba(46, 230, 168, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    transform: translateY(-2px);
+  }
+
+  .gem-icon {
+    width: 76px;
+    height: 76px;
+    margin: 0 auto 22px;
+    display: block;
+    filter: drop-shadow(0 8px 18px rgba(46, 230, 168, 0.45));
+  }
+
+  .panel-title {
+    font-size: 26px;
+    font-weight: 700;
+    color: #0a3d35;
+    letter-spacing: 1px;
+    margin-bottom: 18px;
+  }
+
+  .panel-desc {
+    font-size: 14px;
+    color: #4a6b65;
+    line-height: 2;
+    margin-bottom: 12px;
+  }
+  .panel-desc .hint {
+    color: #7a958f;
+    font-size: 13px;
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 11px 26px;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    transition: all 0.2s ease;
+    font-family: inherit;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #2ee6a8, #1ec6c8);
+    color: #fff;
+    box-shadow: 0 8px 20px rgba(46, 230, 168, 0.4);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(46, 230, 168, 0.55); }
+  .btn-primary:active { transform: translateY(0); }
+
+  .btn-ghost {
+    background: rgba(255, 255, 255, 0.6);
+    color: #0a6b5e;
+    border: 1px solid rgba(46, 230, 168, 0.4);
+  }
+  .btn-ghost:hover { background: rgba(255, 255, 255, 0.85); }
+
+  .upload-actions {
+    margin-top: 26px;
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .file-input { display: none; }
+
+  /* ============ 大屏页面 ============ */
+  #dashboardPage {
+    display: none;
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+  }
+
+  .topbar {
+    height: 64px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 4px 20px rgba(20, 80, 70, 0.06);
+  }
+  .file-info {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    font-size: 14px;
+  }
+  .file-name {
+    font-weight: 600;
+    color: #0a3d35;
+    font-size: 15px;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .stat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: rgba(46, 230, 168, 0.12);
+    color: #0a6b5e;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .stat-chip .num { font-weight: 700; color: #0a3d35; }
+
+  .top-actions { display: flex; gap: 10px; }
+  .btn-sm { padding: 8px 16px; font-size: 13px; border-radius: 10px; }
+
+  .dashboard-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    overflow: auto;
+  }
+
+  .placeholder {
+    text-align: center;
+    color: #4a6b65;
+  }
+  .placeholder .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #2ee6a8;
+    display: inline-block;
+    margin-right: 10px;
+    animation: pulse 1.4s infinite ease-in-out;
+    vertical-align: middle;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(0.9); opacity: 0.7; }
+    50% { transform: scale(1.2); opacity: 1; }
+  }
+  .placeholder-text {
+    font-size: 20px;
+    font-weight: 600;
+    color: #0a3d35;
+    display: inline-flex;
+    align-items: center;
+  }
+  .placeholder-sub {
+    margin-top: 14px;
+    font-size: 13px;
+    color: #7a958f;
+  }
+
+  /* ============ 数据卡 ============ */
+  .cards-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    padding: 20px 28px 4px;
+    flex-shrink: 0;
+  }
+  .data-card {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 16px;
+    padding: 16px 20px 14px 24px;
+    box-shadow: 0 8px 22px rgba(20, 80, 70, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    position: relative;
+    overflow: hidden;
+  }
+  .data-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(180deg, #2ee6a8, #1ec6c8);
+  }
+  .card-label {
+    font-size: 12px;
+    color: #6a8a83;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+  }
+  .card-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: #0a3d35;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .card-column {
+    font-size: 11px;
+    color: #7a958f;
+    margin-top: 6px;
+  }
+
+  /* ============ 图表网格 ============ */
+  .charts-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 14px;
+    padding: 8px 28px 24px;
+    overflow: auto;
+    align-content: start;
+  }
+  .chart-card {
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    border-radius: 14px;
+    padding: 12px 14px 8px;
+    box-shadow: 0 6px 18px rgba(20, 80, 70, 0.06);
+    display: flex;
+    flex-direction: column;
+    min-height: 280px;
+    animation: cardIn 0.45s ease backwards;
+  }
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .chart-card.span-4 { grid-column: span 4; }
+  .chart-card.span-6 { grid-column: span 6; }
+  .chart-card.span-8 { grid-column: span 8; }
+  .chart-card.span-12 { grid-column: span 12; min-height: 320px; }
+  .chart-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0a3d35;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .chart-title::before {
+    content: '';
+    width: 4px;
+    height: 14px;
+    background: linear-gradient(180deg, #2ee6a8, #1ec6c8);
+    border-radius: 2px;
+  }
+  .chart-subtitle {
+    font-size: 11px;
+    color: #7a958f;
+    margin: 4px 0 6px 12px;
+  }
+  .chart-body { flex: 1; min-height: 220px; }
+  .chart-hint {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ab0aa;
+    font-size: 13px;
+    text-align: center;
+    padding: 0 12px;
+  }
+  .text-rank-list { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 4px 2px; }
+  .text-rank-item { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .text-rank-num { width: 18px; height: 18px; border-radius: 4px; background: linear-gradient(135deg, #2ee6a8, #1ec6c8); color: #fff; font-size: 11px; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+  .text-rank-name { width: 80px; color: #0a3d35; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
+  .text-rank-bar { flex: 1; height: 14px; background: rgba(46, 230, 168, 0.1); border-radius: 7px; overflow: hidden; }
+  .text-rank-fill { height: 100%; background: linear-gradient(90deg, #7af0c8, #1ec6c8); border-radius: 7px; transition: width 0.8s ease; }
+  .text-rank-val { width: 70px; text-align: right; color: #0a6b5e; font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+  @media (max-width: 900px) {
+    .cards-row { grid-template-columns: repeat(2, 1fr); }
+    .chart-card.span-4, .chart-card.span-6, .chart-card.span-8 { grid-column: span 12; }
+  }
+  @media (max-width: 600px) {
+    .upload-panel { padding: 40px 24px; }
+    .panel-title { font-size: 22px; }
+    .topbar { padding: 0 14px; height: auto; flex-wrap: wrap; gap: 10px; padding-top: 10px; padding-bottom: 10px; }
+    .file-info { flex-wrap: wrap; gap: 8px; }
+    .cards-row { grid-template-columns: 1fr; padding: 14px; }
+    .charts-grid { padding: 8px 14px 18px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="glow g1"></div>
+<div class="glow g2"></div>
+<div class="glow g3"></div>
+
+<!-- ============ 上传页面 ============ -->
+<div id="uploadPage">
+  <div class="upload-panel" id="uploadPanel">
+    <!-- 宝石图标 -->
+    <svg class="gem-icon" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="gemGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#7af0c8"/>
+          <stop offset="50%" stop-color="#2ee6a8"/>
+          <stop offset="100%" stop-color="#1ec6c8"/>
+        </linearGradient>
+        <linearGradient id="gemHi" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <polygon points="32,4 56,22 32,60 8,22" fill="url(#gemGrad)" stroke="#0a6b5e" stroke-width="1.2" stroke-linejoin="round"/>
+      <polygon points="32,4 56,22 44,22 32,4" fill="url(#gemHi)"/>
+      <line x1="8" y1="22" x2="56" y2="22" stroke="#0a6b5e" stroke-width="1" opacity="0.5"/>
+      <line x1="20" y1="22" x2="32" y2="60" stroke="#0a6b5e" stroke-width="0.8" opacity="0.4"/>
+      <line x1="44" y1="22" x2="32" y2="60" stroke="#0a6b5e" stroke-width="0.8" opacity="0.4"/>
+      <line x1="32" y1="4" x2="32" y2="22" stroke="#0a6b5e" stroke-width="0.8" opacity="0.4"/>
+    </svg>
+
+    <div class="panel-title">拖入 CSV 文件生成大屏</div>
+    <div class="panel-desc">
+      支持任意结构数据：考研 / 招聘 / 销售 / 电商 / 运营 等场景<br>
+      <span class="hint">系统自动识别数据内容，并可手动调整每个图表</span>
+    </div>
+
+    <div class="upload-actions">
+      <button class="btn btn-primary" id="selectBtn">选择 CSV 文件</button>
+      <button class="btn btn-ghost" id="sampleBtn">加载考研示例数据</button>
+    </div>
+
+    <input type="file" id="fileInput" class="file-input" accept=".csv">
+  </div>
+</div>
+
+<!-- ============ 大屏页面 ============ -->
+<div id="dashboardPage">
+  <div class="topbar">
+    <div class="file-info">
+      <span class="file-name" id="fileName">—</span>
+      <span class="stat-chip">数据条数 <span class="num" id="rowCount">0</span></span>
+      <span class="stat-chip">栏目数量 <span class="num" id="colCount">0</span></span>
+    </div>
+    <div class="top-actions">
+      <button class="btn btn-ghost btn-sm" id="randomBtn">随机布局</button>
+      <button class="btn btn-ghost btn-sm" id="adjustBtn">调整内容</button>
+      <button class="btn btn-ghost btn-sm" id="reuploadBtn">重新上传</button>
+    </div>
+  </div>
+
+  <div class="cards-row" id="cardsRow"></div>
+  <div class="charts-grid" id="chartsGrid"></div>
+</div>
+
+<script>
+// ============ 内置考研示例数据 ============
+var SAMPLE_CSV =
+"学校名称,985,211,双一流,普通院校,院系名称,专业,招生人数,学习方式,分数线\n" +
+"清华大学,是,是,是,不是,人文学院,哲学,4,全日制,370\n" +
+"清华大学,是,是,是,不是,经济管理学院,金融,1,全日制,365\n" +
+"清华大学,是,是,是,不是,五道口金融学院,金融,35,全日制,365\n" +
+"清华大学,是,是,是,不是,数学科学系,应用统计,2,全日制,380\n" +
+"清华大学,是,是,是,不是,统计与数据科学系,应用统计,40,非全日制,380\n" +
+"北京大学,是,是,是,不是,光华管理学院,金融,15,全日制,390\n" +
+"北京大学,是,是,是,不是,经济学院,应用经济学,8,全日制,385\n" +
+"北京大学,是,是,是,不是,信息科学技术学院,计算机科学与技术,25,全日制,360\n" +
+"北京大学,是,是,是,不是,法学院,法律(法学),30,全日制,355\n" +
+"复旦大学,是,是,是,不是,经济学院,理论经济学,6,全日制,365\n" +
+"复旦大学,是,是,是,不是,管理学院,工商管理,12,全日制,360\n" +
+"复旦大学,是,是,是,不是,新闻学院,新闻与传播,18,全日制,370\n" +
+"上海交通大学,是,是,是,不是,安泰经济与管理学院,应用经济学,10,全日制,375\n" +
+"上海交通大学,是,是,是,不是,电子信息与电气工程学院,计算机技术,28,全日制,365\n" +
+"浙江大学,是,是,是,不是,经济学院,金融,14,全日制,370\n" +
+"浙江大学,是,是,是,不是,计算机学院,软件工程,22,全日制,360\n" +
+"浙江大学,是,是,是,不是,管理学院,会计,16,全日制,355\n" +
+"南京大学,是,是,是,不是,商学院,金融,11,全日制,370\n" +
+"南京大学,是,是,是,不是,计算机科学与技术系,计算机科学与技术,20,全日制,355\n" +
+"武汉大学,是,是,是,不是,经济与管理学院,应用经济学,13,全日制,360\n" +
+"武汉大学,是,是,是,不是,法学院,法律(非法学),35,全日制,345\n" +
+"华中科技大学,是,是,是,不是,管理学院,工商管理,15,全日制,355\n" +
+"华中科技大学,是,是,是,不是,计算机学院,计算机技术,26,全日制,350\n" +
+"中山大学,是,是,是,不是,岭南学院,金融,12,全日制,370\n" +
+"中山大学,是,是,是,不是,管理学院,会计,18,全日制,360\n" +
+"四川大学,是,是,是,不是,经济学院,应用经济学,14,全日制,355\n" +
+"四川大学,是,是,是,不是,法学院,法律(法学),28,全日制,345\n" +
+"吉林大学,是,是,是,不是,经济学院,金融,16,全日制,345\n" +
+"吉林大学,是,是,是,不是,法学院,法律(非法学),40,全日制,340\n" +
+"山东大学,是,是,是,不是,经济学院,应用经济学,15,全日制,350\n" +
+"山东大学,是,是,是,不是,计算机科学与技术学院,计算机科学与技术,18,全日制,345\n" +
+"中南大学,是,是,是,不是,商学院,工商管理,14,全日制,345\n" +
+"厦门大学,是,是,是,不是,经济学院,金融,20,全日制,365\n" +
+"厦门大学,是,是,是,不是,管理学院,会计,25,全日制,360\n" +
+"北京师范大学,是,是,是,不是,经济与工商管理学院,应用经济学,10,全日制,360\n" +
+"华东师范大学,是,是,是,不是,经济与管理学部,金融,12,全日制,360\n" +
+"东南大学,是,是,是,不是,经济管理学院,应用经济学,11,全日制,360\n" +
+"东北大学,是,是,是,不是,工商管理学院,工商管理,13,全日制,345\n" +
+"苏州大学,不是,是,是,不是,东吴商学院,金融,18,全日制,355\n" +
+"郑州大学,不是,是,是,不是,商学院,应用经济学,20,全日制,345\n" +
+"上海大学,不是,是,是,不是,悉尼工商学院,金融,22,全日制,350\n" +
+"南京师范大学,不是,是,是,不是,商学院,会计,16,全日制,350\n" +
+"湖南师范大学,不是,是,是,不是,商学院,工商管理,18,全日制,340\n" +
+"深圳大学,不是,不是,不是,是,经济学院,金融,25,全日制,345\n" +
+"深圳大学,不是,不是,不是,是,计算机与软件学院,软件工程,40,全日制,340\n" +
+"杭州电子科技大学,不是,不是,不是,是,计算机学院,计算机技术,45,全日制,335\n" +
+"浙江工业大学,不是,不是,不是,是,管理学院,工商管理,30,全日制,335\n" +
+"江苏大学,不是,不是,不是,是,财经学院,会计,28,全日制,335\n" +
+"青岛大学,不是,不是,不是,是,经济学院,应用经济学,22,全日制,330\n";
+
+// ============ 页面切换 ============
+var uploadPage = document.getElementById('uploadPage');
+var dashboardPage = document.getElementById('dashboardPage');
+var fileNameEl = document.getElementById('fileName');
+var rowCountEl = document.getElementById('rowCount');
+var colCountEl = document.getElementById('colCount');
+
+function showDashboard(name, data) {
+  fileNameEl.textContent = name;
+  rowCountEl.textContent = data.length;
+  colCountEl.textContent = data.length > 0 ? Object.keys(data[0]).length : 0;
+  uploadPage.style.display = 'none';
+  dashboardPage.style.display = 'flex';
+  window._csvData = data;
+  renderDashboard(data);
+}
+
+// ============ 数据分析与图表生成 ============
+var PALETTE = ['#2ee6a8', '#1ec6c8', '#7af0c8', '#34d8e6', '#16a085', '#48d1b3', '#a8e6cf', '#5fc9c4'];
+
+function isNumberLike(v) {
+  if (v === null || v === undefined || v === '') return false;
+  if (typeof v === 'number') return true;
+  var s = String(v).trim().replace(/,/g, '').replace(/%$/, '').replace(/[年月日]$/g, '');
+  return s !== '' && !isNaN(Number(s));
+}
+function toNumber(v) {
+  if (typeof v === 'number') return v;
+  var s = String(v).trim().replace(/,/g, '').replace(/%$/, '');
+  return Number(s);
+}
+function isDateLike(v) {
+  if (v === null || v === undefined || v === '') return false;
+  var s = String(v).trim();
+  return /^\d{4}[-\/]\d{1,2}([-\/]\d{1,2})?/.test(s) ||
+         /^\d{4}年\d{1,2}月(\d{1,2}日)?/.test(s) ||
+         /^\d{4}[-\/]\d{1,2}([-\/]\d{1,2})?$/.test(s);
+}
+function parseDateValue(v) {
+  var s = String(v).trim().replace(/年|月/g, '-').replace(/日/g, '').replace(/\//g, '-');
+  var t = new Date(s);
+  return isNaN(t.getTime()) ? null : t;
+}
+
+function analyzeData(data) {
+  if (!data || data.length === 0) return null;
+  var colNames = Object.keys(data[0]);
+  var columns = colNames.map(function (name) {
+    var values = data.map(function (r) { return r[name]; });
+    var nonEmpty = values.filter(function (v) { return v !== null && v !== undefined && String(v).trim() !== ''; });
+    var numCount = nonEmpty.filter(isNumberLike).length;
+    var dateCount = nonEmpty.filter(isDateLike).length;
+    var uniq = {};
+    nonEmpty.forEach(function (v) { uniq[String(v)] = true; });
+    var uniqueCount = Object.keys(uniq).length;
+
+    var type = 'text';
+    var nonEmptyLen = nonEmpty.length || 1;
+    if (numCount / nonEmptyLen >= 0.7) type = 'numeric';
+    else if (dateCount / nonEmptyLen >= 0.7) type = 'date';
+    else if (uniqueCount <= Math.max(20, data.length * 0.5)) type = 'categorical';
+
+    var stats = {};
+    if (type === 'numeric') {
+      var nums = nonEmpty.map(toNumber).filter(function (n) { return !isNaN(n); });
+      if (nums.length > 0) {
+        stats.sum = nums.reduce(function (a, b) { return a + b; }, 0);
+        stats.avg = stats.sum / nums.length;
+        stats.max = Math.max.apply(null, nums);
+        stats.min = Math.min.apply(null, nums);
+      }
+    }
+    return { name: name, type: type, values: values, uniqueCount: uniqueCount, stats: stats };
+  });
+
+  return {
+    data: data,
+    columns: columns,
+    numericCols: columns.filter(function (c) { return c.type === 'numeric'; }),
+    categoricalCols: columns.filter(function (c) { return c.type === 'categorical'; }),
+    dateCols: columns.filter(function (c) { return c.type === 'date'; })
+  };
+}
+
+function pickCategorical(analysis, preferMoreUnique) {
+  var cols = analysis.categoricalCols.slice();
+  if (cols.length === 0) return null;
+  cols.sort(function (a, b) {
+    return preferMoreUnique ? (b.uniqueCount - a.uniqueCount) : (a.uniqueCount - b.uniqueCount);
+  });
+  // 避开唯一值过多或过少
+  var good = cols.filter(function (c) { return c.uniqueCount >= 2 && c.uniqueCount <= 30; });
+  return good.length > 0 ? good[0] : cols[0];
+}
+// 随机挑选分类列（在指定唯一值范围内），用于让不同图表展示不同维度
+function pickCategoricalRandom(analysis, minU, maxU) {
+  var min = minU || 2, max = maxU || 30;
+  var cols = analysis.categoricalCols.filter(function (c) {
+    return c.uniqueCount >= min && c.uniqueCount <= max;
+  });
+  if (cols.length === 0) cols = analysis.categoricalCols.slice();
+  if (cols.length === 0) return null;
+  return cols[Math.floor(Math.random() * cols.length)];
+}
+function pickNumeric(analysis) {
+  if (analysis.numericCols.length === 0) return null;
+  return analysis.numericCols.slice().sort(function (a, b) {
+    return (b.stats.max - b.stats.min) - (a.stats.max - a.stats.min);
+  })[0];
+}
+
+function groupBy(data, catColName, numColName, agg) {
+  var groups = {};
+  data.forEach(function (r) {
+    var key = r[catColName];
+    if (key === null || key === undefined || String(key).trim() === '') return;
+    key = String(key);
+    if (!groups[key]) groups[key] = [];
+    if (numColName) {
+      var v = r[numColName];
+      if (isNumberLike(v)) groups[key].push(toNumber(v));
+    } else {
+      groups[key].push(1);
+    }
+  });
+  return Object.keys(groups).map(function (k) {
+    var arr = groups[k];
+    var val = 0;
+    if (agg === 'sum' || agg === 'count') val = arr.reduce(function (a, b) { return a + b; }, 0);
+    else if (agg === 'avg') val = arr.length ? arr.reduce(function (a, b) { return a + b; }, 0) / arr.length : 0;
+    else if (agg === 'max') val = arr.length ? Math.max.apply(null, arr) : 0;
+    return { name: k, value: val, count: arr.length };
+  }).sort(function (a, b) { return b.value - a.value; });
+}
+
+function tooltipStyle() {
+  return {
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderColor: 'rgba(46, 230, 168, 0.5)',
+    borderWidth: 1,
+    textStyle: { color: '#0a3d35', fontSize: 12 },
+    extraCssText: 'backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 6px 18px rgba(20, 80, 70, 0.18); border-radius: 10px;'
+  };
+}
+function axisStyle() {
+  return {
+    axisLine: { lineStyle: { color: '#b3ccc4' } },
+    axisLabel: { color: '#4a6b65', fontSize: 11 },
+    splitLine: { lineStyle: { color: 'rgba(170, 200, 195, 0.25)' } }
+  };
+}
+
+// ============ 数据卡 ============
+function buildDataCards(analysis) {
+  var cards = [];
+  var numCol = pickNumeric(analysis);
+  var catCol = pickCategorical(analysis, true);
+
+  if (catCol) {
+    cards.push({ label: catCol.name + ' 数量', value: catCol.uniqueCount, column: catCol.name });
+  } else {
+    cards.push({ label: '数据条数', value: analysis.data.length, column: '全部数据' });
+  }
+  if (numCol) {
+    cards.push({ label: '总和', value: numCol.stats.sum || 0, column: numCol.name });
+    cards.push({ label: '平均值', value: numCol.stats.avg || 0, column: numCol.name });
+    cards.push({ label: '最大值', value: numCol.stats.max || 0, column: numCol.name });
+  } else {
+    cards.push({ label: '数据条数', value: analysis.data.length, column: '全部数据' });
+    cards.push({ label: '栏目数量', value: analysis.columns.length, column: '全部数据' });
+    cards.push({ label: '分类维度', value: analysis.categoricalCols.length, column: '全部数据' });
+  }
+  return cards.slice(0, 4);
+}
+
+function renderCards(analysis) {
+  var cards = buildDataCards(analysis);
+  var html = cards.map(function (c, i) {
+    return '<div class="data-card">' +
+      '<div class="card-label">' + c.label + '</div>' +
+      '<div class="card-value" id="cardVal' + i + '">0</div>' +
+      '<div class="card-column">栏目：' + (c.column || '—') + '</div>' +
+      '</div>';
+  }).join('');
+  document.getElementById('cardsRow').innerHTML = html;
+  cards.forEach(function (c, i) {
+    animateNumber(document.getElementById('cardVal' + i), c.value, 1100);
+  });
+}
+
+function animateNumber(el, target, duration) {
+  if (!el) return;
+  var start = null;
+  function step(ts) {
+    if (!start) start = ts;
+    var p = Math.min((ts - start) / duration, 1);
+    var eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = formatNumber(target * eased);
+    if (p < 1) requestAnimationFrame(step);
+    else el.textContent = formatNumber(target);
+  }
+  requestAnimationFrame(step);
+}
+function formatNumber(n) {
+  if (!isFinite(n)) return '0';
+  if (Math.abs(n) >= 1000) return Math.round(n).toLocaleString('zh-CN');
+  if (Math.abs(n - Math.round(n)) < 0.01) return String(Math.round(n));
+  return n.toFixed(1);
+}
+
+// ============ 12 种图表生成器 ============
+// 每个返回 {key, title, subtitle, option|html|hint, span} 或 null
+
+function buildBarChart(a) {
+  var cat = pickCategoricalRandom(a, 3, 30);
+  if (!cat) return null;
+  var num = pickNumeric(a);
+  var agg = num ? 'sum' : 'count';
+  var groups = groupBy(a.data, cat.name, num ? num.name : null, agg).slice(0, 10);
+  if (groups.length < 2) return null;
+  return {
+    key: 'bar',
+    title: (num ? cat.name + ' · ' + num.name + (agg === 'sum' ? ' 总和' : '') : cat.name + ' 数量统计'),
+    subtitle: '按「' + cat.name + '」分组 · ' + (agg === 'sum' ? '求和' : '计数') + ' · Top ' + groups.length,
+    span: 6,
+    option: {
+      color: [PALETTE[0]],
+      tooltip: Object.assign({ trigger: 'axis' }, tooltipStyle()),
+      grid: { left: '2%', right: '4%', bottom: '2%', top: 24, containLabel: true },
+      xAxis: Object.assign({ type: 'category', data: groups.map(function (g) { return g.name; }), axisTick: { alignWithLabel: true } }, axisStyle()),
+      yAxis: Object.assign({ type: 'value' }, axisStyle()),
+      series: [{
+        type: 'bar', data: groups.map(function (g) { return g.value; }), barMaxWidth: 28,
+        itemStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: '#7af0c8' }, { offset: 1, color: '#1ec6c8' }] }, borderRadius: [4, 4, 0, 0] },
+        label: { show: true, position: 'top', color: '#0a6b5e', fontSize: 11 }
+      }]
+    }
+  };
+}
+
+function buildHorizontalBar(a) {
+  var cat = pickCategoricalRandom(a, 3, 20);
+  if (!cat) return null;
+  var num = pickNumeric(a);
+  var agg = num ? 'sum' : 'count';
+  var groups = groupBy(a.data, cat.name, num ? num.name : null, agg).slice(0, 8);
+  if (groups.length < 2) return null;
+  groups.reverse();
+  return {
+    key: 'hbar',
+    title: (num ? cat.name + ' 排行榜' : cat.name + ' 计数排行'),
+    subtitle: '按「' + cat.name + '」排序 · ' + (agg === 'sum' ? num.name + ' 总和' : '计数') + ' · Top ' + groups.length,
+    span: 6,
+    option: {
+      color: [PALETTE[1]],
+      tooltip: Object.assign({ trigger: 'axis' }, tooltipStyle()),
+      grid: { left: '2%', right: '8%', bottom: '2%', top: 24, containLabel: true },
+      xAxis: Object.assign({ type: 'value' }, axisStyle()),
+      yAxis: Object.assign({ type: 'category', data: groups.map(function (g) { return g.name; }) }, axisStyle()),
+      series: [{
+        type: 'bar', data: groups.map(function (g) { return g.value; }), barMaxWidth: 18,
+        itemStyle: { color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: '#7af0c8' }, { offset: 1, color: '#1ec6c8' }] }, borderRadius: [0, 4, 4, 0] },
+        label: { show: true, position: 'right', color: '#0a6b5e', fontSize: 11, formatter: '{c}' }
+      }]
+    }
+  };
+}
+
+function buildPieChart(a) {
+  var cat = pickCategoricalRandom(a, 3, 12);
+  if (!cat) return null;
+  var num = pickNumeric(a);
+  var agg = num ? 'sum' : 'count';
+  var groups = groupBy(a.data, cat.name, num ? num.name : null, agg).slice(0, 7);
+  if (groups.length < 3) return null;
+  var data = groups.map(function (g, i) {
+    return { name: g.name, value: g.value, itemStyle: { color: PALETTE[i % PALETTE.length] } };
+  });
+  return {
+    key: 'pie',
+    title: cat.name + ' 占比分布',
+    subtitle: '按「' + cat.name + '」分类 · ' + (num ? num.name + ' 总和' : '计数'),
+    span: 4,
+    option: {
+      color: PALETTE,
+      tooltip: Object.assign({ trigger: 'item', formatter: '{b}<br/>数值：{c} ({d}%)' }, tooltipStyle()),
+      legend: { type: 'scroll', orient: 'horizontal', bottom: 0, textStyle: { color: '#4a6b65', fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
+      series: [{
+        type: 'pie', radius: ['38%', '62%'], center: ['50%', '44%'],
+        data: data, itemStyle: { borderColor: '#fff', borderWidth: 2 },
+        label: { color: '#0a3d35', fontSize: 11, formatter: '{b}\n{d}%' }
+      }]
+    }
+  };
+}
+
+function buildRoseChart(a) {
+  var cat = pickCategoricalRandom(a, 3, 12);
+  if (!cat) return null;
+  var num = pickNumeric(a);
+  if (!num) return null;
+  var groups = groupBy(a.data, cat.name, num.name, 'sum').slice(0, 9);
+  if (groups.length < 3) return null;
+  return {
+    key: 'rose',
+    title: cat.name + ' · ' + num.name + ' 玫瑰图',
+    subtitle: '按「' + cat.name + '」· ' + num.name + ' 总和 · 半径随数值变化',
+    span: 4,
+    option: {
+      color: PALETTE,
+      tooltip: Object.assign({ trigger: 'item', formatter: '{b}<br/>' + num.name + '：{c}' }, tooltipStyle()),
+      legend: { type: 'scroll', orient: 'horizontal', bottom: 0, textStyle: { color: '#4a6b65', fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
+      series: [{
+        type: 'pie', roseType: 'radius', radius: ['18%', '70%'], center: ['50%', '46%'],
+        data: groups.map(function (g, i) { return { name: g.name, value: g.value, itemStyle: { color: PALETTE[i % PALETTE.length] } }; }),
+        label: { color: '#0a3d35', fontSize: 10 },
+        itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 }
+      }]
+    }
+  };
+}
+
+function buildTrendChart(a) {
+  var num = pickNumeric(a);
+  if (!num) return null;
+  var xData, yData, xLabel;
+  if (a.dateCols.length > 0) {
+    var dateCol = a.dateCols[0];
+    var pairs = a.data.map(function (r) {
+      var d = parseDateValue(r[dateCol.name]);
+      var v = r[num.name];
+      return d && isNumberLike(v) ? { d: d, v: toNumber(v) } : null;
+    }).filter(function (x) { return x; });
+    pairs.sort(function (a, b) { return a.d - b.d; });
+    var aggByDate = {};
+    pairs.forEach(function (p) {
+      var key = p.d.getFullYear() + '/' + (p.d.getMonth() + 1) + (p.d.getDate() ? '/' + p.d.getDate() : '');
+      if (!aggByDate[key]) aggByDate[key] = [];
+      aggByDate[key].push(p.v);
+    });
+    xData = Object.keys(aggByDate);
+    yData = xData.map(function (k) { return Math.round(aggByDate[k].reduce(function (a, b) { return a + b; }, 0) / aggByDate[k].length * 100) / 100; });
+    xLabel = dateCol.name;
+  } else {
+    // 无日期，按数据顺序展示
+    yData = a.data.map(function (r) { var v = r[num.name]; return isNumberLike(v) ? toNumber(v) : null; }).filter(function (v) { return v !== null; });
+    xData = yData.map(function (_, i) { return String(i + 1); });
+    xLabel = '数据序号';
+    if (yData.length < 4) return null;
+  }
+  if (yData.length < 2) return null;
+  return {
+    key: 'line',
+    title: num.name + ' 趋势变化',
+    subtitle: '按「' + xLabel + '」· ' + num.name + (a.dateCols.length > 0 ? ' 日均' : ''),
+    span: 8,
+    option: {
+      color: [PALETTE[1]],
+      tooltip: Object.assign({ trigger: 'axis' }, tooltipStyle()),
+      grid: { left: '2%', right: '3%', bottom: '2%', top: 24, containLabel: true },
+      xAxis: Object.assign({ type: 'category', data: xData, boundaryGap: false }, axisStyle()),
+      yAxis: Object.assign({ type: 'value' }, axisStyle()),
+      series: [{
+        type: 'line', data: yData, smooth: true, symbol: 'circle', symbolSize: 6,
+        lineStyle: { width: 3, color: PALETTE[1] },
+        itemStyle: { color: PALETTE[1] },
+        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(46, 230, 168, 0.35)' }, { offset: 1, color: 'rgba(46, 230, 168, 0.02)' }] } }
+      }]
+    }
+  };
+}
+
+function buildAreaChart(a) {
+  if (a.dateCols.length === 0) return null;
+  var dateCol = a.dateCols[0];
+  if (a.numericCols.length === 0) return null;
+  var nums = a.numericCols.slice(0, 2);
+  var pairs = a.data.map(function (r) {
+    var d = parseDateValue(r[dateCol.name]);
+    if (!d) return null;
+    var item = { d: d };
+    nums.forEach(function (n) { var v = r[n.name]; item[n.name] = isNumberLike(v) ? toNumber(v) : null; });
+    return item;
+  }).filter(function (x) { return x; });
+  pairs.sort(function (a, b) { return a.d - b.d; });
+  var agg = {};
+  pairs.forEach(function (p) {
+    var key = p.d.getFullYear() + '/' + (p.d.getMonth() + 1);
+    if (!agg[key]) agg[key] = {};
+    nums.forEach(function (n) {
+      if (p[n.name] !== null) {
+        if (!agg[key][n.name]) agg[key][n.name] = [];
+        agg[key][n.name].push(p[n.name]);
+      }
+    });
+  });
+  var xData = Object.keys(agg);
+  if (xData.length < 2) return null;
+  var series = nums.map(function (n, i) {
+    return {
+      name: n.name, type: 'line', stack: 'total', smooth: true, symbol: 'none',
+      lineStyle: { width: 1.5 }, itemStyle: { color: PALETTE[i % PALETTE.length] },
+      areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: PALETTE[i % PALETTE.length] + 'cc' }, { offset: 1, color: PALETTE[i % PALETTE.length] + '11' }] } },
+      data: xData.map(function (k) { var arr = agg[k][n.name]; return arr && arr.length ? Math.round(arr.reduce(function (s, v) { return s + v; }, 0) / arr.length * 100) / 100 : null; })
+    };
+  });
+  return {
+    key: 'area',
+    title: nums.map(function (n) { return n.name; }).join(' / ') + ' 堆叠面积',
+    subtitle: '按「' + dateCol.name + '」月度均值 · 堆叠',
+    span: 8,
+    option: {
+      color: PALETTE,
+      tooltip: Object.assign({ trigger: 'axis' }, tooltipStyle()),
+      legend: { top: 0, right: 0, textStyle: { color: '#4a6b65', fontSize: 11 }, itemWidth: 12, itemHeight: 8 },
+      grid: { left: '2%', right: '3%', bottom: '2%', top: 30, containLabel: true },
+      xAxis: Object.assign({ type: 'category', data: xData, boundaryGap: false }, axisStyle()),
+      yAxis: Object.assign({ type: 'value' }, axisStyle()),
+      series: series
+    }
+  };
+}
+
+function buildScatterChart(a) {
+  if (a.numericCols.length < 2) return null;
+  var n1 = a.numericCols[0];
+  var n2 = a.numericCols[1];
+  var points = a.data.map(function (r) {
+    var x = r[n1.name], y = r[n2.name];
+    if (!isNumberLike(x) || !isNumberLike(y)) return null;
+    return [toNumber(x), toNumber(y)];
+  }).filter(function (p) { return p; });
+  if (points.length < 3) return null;
+  return {
+    key: 'scatter',
+    title: n1.name + ' 与 ' + n2.name + ' 关系',
+    subtitle: 'X：' + n1.name + ' · Y：' + n2.name + ' · 共 ' + points.length + ' 点',
+    span: 6,
+    option: {
+      color: [PALETTE[0]],
+      tooltip: Object.assign({ trigger: 'item', formatter: function (p) { return n1.name + '：' + p.value[0] + '<br/>' + n2.name + '：' + p.value[1]; } }, tooltipStyle()),
+      grid: { left: '3%', right: '4%', bottom: '3%', top: 24, containLabel: true },
+      xAxis: Object.assign({ type: 'value', name: n1.name, nameLocation: 'middle', nameGap: 28, nameTextStyle: { color: '#0a3d35', fontSize: 11 } }, axisStyle()),
+      yAxis: Object.assign({ type: 'value', name: n2.name, nameTextStyle: { color: '#0a3d35', fontSize: 11 } }, axisStyle()),
+      series: [{
+        type: 'scatter', data: points, symbolSize: 9,
+        itemStyle: { color: 'rgba(46, 230, 168, 0.55)', borderColor: '#1ec6c8', borderWidth: 1 }
+      }]
+    }
+  };
+}
+
+function buildGroupBar(a) {
+  if (a.categoricalCols.length < 2) return null;
+  var cat1 = a.categoricalCols[0];
+  var cat2 = a.categoricalCols.slice().sort(function (x, y) { return x.uniqueCount - y.uniqueCount; })[0];
+  if (cat1 === cat2 && a.categoricalCols.length > 1) cat1 = a.categoricalCols[1];
+  var num = pickNumeric(a);
+  var agg = num ? 'sum' : 'count';
+  // 取 cat1 中 top 6
+  var topCat1 = groupBy(a.data, cat1.name, num ? num.name : null, agg).slice(0, 6).map(function (g) { return g.name; });
+  // 取 cat2 中 top 4
+  var topCat2 = groupBy(a.data, cat2.name, num ? num.name : null, agg).slice(0, 4).map(function (g) { return g.name; });
+  if (topCat1.length < 2 || topCat2.length < 2) return null;
+  var series = topCat2.map(function (c2, i) {
+    return {
+      name: c2, type: 'bar', barMaxWidth: 18,
+      itemStyle: { color: PALETTE[i % PALETTE.length], borderRadius: [3, 3, 0, 0] },
+      data: topCat1.map(function (c1) {
+        var filtered = a.data.filter(function (r) { return String(r[cat1.name]) === c1 && String(r[cat2.name]) === c2; });
+        if (num) {
+          var vals = filtered.map(function (r) { return isNumberLike(r[num.name]) ? toNumber(r[num.name]) : null; }).filter(function (v) { return v !== null; });
+          return vals.length ? Math.round(vals.reduce(function (a, b) { return a + b; }, 0) * 100) / 100 : 0;
+        }
+        return filtered.length;
+      })
+    };
+  });
+  return {
+    key: 'group',
+    title: cat1.name + ' × ' + cat2.name + ' 分组对比',
+    subtitle: '按「' + cat1.name + '」分组 · 按「' + cat2.name + '」系列 · ' + (num ? num.name + ' 总和' : '计数'),
+    span: 8,
+    option: {
+      color: PALETTE,
+      tooltip: Object.assign({ trigger: 'axis', axisPointer: { type: 'shadow' } }, tooltipStyle()),
+      legend: { top: 0, right: 0, textStyle: { color: '#4a6b65', fontSize: 11 }, itemWidth: 12, itemHeight: 8 },
+      grid: { left: '2%', right: '3%', bottom: '2%', top: 30, containLabel: true },
+      xAxis: Object.assign({ type: 'category', data: topCat1 }, axisStyle()),
+      yAxis: Object.assign({ type: 'value' }, axisStyle()),
+      series: series
+    }
+  };
+}
+
+function buildRadarChart(a) {
+  if (a.numericCols.length < 3) return null;
+  var nums = a.numericCols.slice(0, Math.min(5, a.numericCols.length));
+  var cat = pickCategoricalRandom(a, 3, 12);
+  if (!cat) return null;
+  // 取 cat 中 top 4
+  var groups = groupBy(a.data, cat.name, null, 'count').slice(0, 4);
+  if (groups.length < 2) return null;
+  // 归一化每个 numeric 列的最大值
+  var maxVals = nums.map(function (n) { return n.stats.max > 0 ? n.stats.max : 1; });
+  var series = [{
+    name: cat.name,
+    type: 'radar',
+    symbol: 'circle', symbolSize: 5,
+    lineStyle: { width: 2 },
+    areaStyle: { opacity: 0.15 },
+    data: groups.map(function (g, i) {
+      var filtered = a.data.filter(function (r) { return String(r[cat.name]) === g.name; });
+      return {
+        name: g.name,
+        value: nums.map(function (n, ni) {
+          var vals = filtered.map(function (r) { return isNumberLike(r[n.name]) ? toNumber(r[n.name]) : null; }).filter(function (v) { return v !== null; });
+          return vals.length ? Math.round(vals.reduce(function (s, v) { return s + v; }, 0) / vals.length * 100) / 100 : 0;
+        }),
+        itemStyle: { color: PALETTE[i % PALETTE.length] },
+        areaStyle: { color: PALETTE[i % PALETTE.length] + '33' }
+      };
+    })
+  }];
+  return {
+    key: 'radar',
+    title: nums.map(function (n) { return n.name; }).join(' / ') + ' 雷达对比',
+    subtitle: '按「' + cat.name + '」Top ' + groups.length + ' · 各栏目均值',
+    span: 6,
+    option: {
+      color: PALETTE,
+      tooltip: Object.assign({ trigger: 'item' }, tooltipStyle()),
+      legend: { bottom: 0, textStyle: { color: '#4a6b65', fontSize: 11 }, itemWidth: 12, itemHeight: 8 },
+      radar: {
+        indicator: nums.map(function (n) { return { name: n.name, max: undefined }; }),
+        center: ['50%', '48%'], radius: '62%',
+        axisName: { color: '#0a3d35', fontSize: 11 },
+        splitLine: { lineStyle: { color: 'rgba(170, 200, 195, 0.4)' } },
+        splitArea: { areaStyle: { color: ['rgba(46, 230, 168, 0.04)', 'rgba(46, 230, 168, 0.08)'] } },
+        axisLine: { lineStyle: { color: 'rgba(170, 200, 195, 0.4)' } }
+      },
+      series: series
+    }
+  };
+}
+
+function buildFunnelChart(a) {
+  var cat = pickCategoricalRandom(a, 3, 10);
+  if (!cat) return null;
+  var num = pickNumeric(a);
+  var agg = num ? 'sum' : 'count';
+  var groups = groupBy(a.data, cat.name, num ? num.name : null, agg).slice(0, 6);
+  if (groups.length < 3) return null;
+  return {
+    key: 'funnel',
+    title: cat.name + ' 漏斗',
+    subtitle: '按「' + cat.name + '」· ' + (num ? num.name + ' 总和' : '计数') + ' · Top ' + groups.length,
+    span: 4,
+    option: {
+      color: PALETTE,
+      tooltip: Object.assign({ trigger: 'item', formatter: '{b}: {c} ({d}%)' }, tooltipStyle()),
+      legend: { type: 'scroll', orient: 'horizontal', bottom: 0, textStyle: { color: '#4a6b65', fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
+      series: [{
+        type: 'funnel', left: '5%', right: '5%', top: 18, bottom: 30, width: '90%',
+        minSize: '30%', maxSize: '100%', sort: 'descending', gap: 2,
+        label: { color: '#0a3d35', fontSize: 11, formatter: '{b}\n{c}' },
+        labelLine: { show: false },
+        itemStyle: { borderColor: '#fff', borderWidth: 1 },
+        data: groups.map(function (g, i) { return { name: g.name, value: g.value, itemStyle: { color: PALETTE[i % PALETTE.length] } }; })
+      }]
+    }
+  };
+}
+
+function buildGaugeChart(a) {
+  var num = pickNumeric(a);
+  if (!num) return null;
+  var avg = num.stats.avg || 0;
+  var max = num.stats.max > 0 ? num.stats.max : (avg * 2 || 100);
+  // 用 avg 占 max 的比例作为仪表值
+  var pct = max > 0 ? Math.round(avg / max * 100) : 0;
+  return {
+    key: 'gauge',
+    title: num.name + ' 仪表盘',
+    subtitle: '平均值：' + formatNumber(avg) + ' · 最大值：' + formatNumber(max),
+    span: 4,
+    option: {
+      tooltip: Object.assign({ formatter: function () { return num.name + '<br/>平均值：' + formatNumber(avg); } }, tooltipStyle()),
+      series: [{
+        type: 'gauge', center: ['50%', '60%'], radius: '85%',
+        min: 0, max: 100,
+        progress: { show: true, width: 12, itemStyle: { color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: '#7af0c8' }, { offset: 1, color: '#1ec6c8' }] } } },
+        axisLine: { lineStyle: { width: 12, color: [[1, 'rgba(46, 230, 168, 0.12)']] } },
+        axisTick: { show: false },
+        splitLine: { show: false },
+        axisLabel: { show: false },
+        pointer: { width: 4, length: '60%', itemStyle: { color: '#1ec6c8' } },
+        anchor: { show: true, size: 10, itemStyle: { color: '#1ec6c8' } },
+        title: { show: false },
+        detail: { valueAnimation: true, formatter: '{value}%', color: '#0a3d35', fontSize: 22, fontWeight: 700, offsetCenter: [0, '30%'] },
+        data: [{ value: pct }]
+      }]
+    }
+  };
+}
+
+function buildTextRanking(a) {
+  var cat = pickCategoricalRandom(a, 4, 30);
+  if (!cat) return null;
+  var num = pickNumeric(a);
+  var agg = num ? 'sum' : 'count';
+  var groups = groupBy(a.data, cat.name, num ? num.name : null, agg).slice(0, 8);
+  if (groups.length < 3) return null;
+  var maxVal = groups[0].value || 1;
+  var html = '<div class="text-rank-list">';
+  groups.forEach(function (g, i) {
+    var pct = Math.round(g.value / maxVal * 100);
+    html += '<div class="text-rank-item">' +
+      '<div class="text-rank-num">' + (i + 1) + '</div>' +
+      '<div class="text-rank-name" title="' + g.name + '">' + g.name + '</div>' +
+      '<div class="text-rank-bar"><div class="text-rank-fill" style="width:0" data-w="' + pct + '"></div></div>' +
+      '<div class="text-rank-val">' + formatNumber(g.value) + '</div>' +
+      '</div>';
+  });
+  html += '</div>';
+  return {
+    key: 'text',
+    title: cat.name + ' 文字排行榜',
+    subtitle: '按「' + cat.name + '」· ' + (num ? num.name + ' 总和' : '计数') + ' · Top ' + groups.length,
+    span: 6,
+    html: html
+  };
+}
+
+var CHART_BUILDERS = [
+  { key: 'bar', build: buildBarChart },
+  { key: 'hbar', build: buildHorizontalBar },
+  { key: 'pie', build: buildPieChart },
+  { key: 'rose', build: buildRoseChart },
+  { key: 'line', build: buildTrendChart },
+  { key: 'area', build: buildAreaChart },
+  { key: 'scatter', build: buildScatterChart },
+  { key: 'group', build: buildGroupBar },
+  { key: 'radar', build: buildRadarChart },
+  { key: 'funnel', build: buildFunnelChart },
+  { key: 'gauge', build: buildGaugeChart },
+  { key: 'text', build: buildTextRanking }
+];
+
+var SIZE_PATTERNS = [
+  ['span-6', 'span-6', 'span-4', 'span-4', 'span-4', 'span-12'],
+  ['span-4', 'span-8', 'span-6', 'span-6', 'span-4', 'span-8'],
+  ['span-8', 'span-4', 'span-4', 'span-4', 'span-4', 'span-12'],
+  ['span-6', 'span-6', 'span-8', 'span-4', 'span-12', 'span-6'],
+  ['span-4', 'span-4', 'span-4', 'span-8', 'span-8', 'span-4']
+];
+
+function shuffle(arr) {
+  for (var i = arr.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+  return arr;
+}
+
+function disposeCharts() {
+  if (window._echartInstances) {
+    window._echartInstances.forEach(function (c) { try { c.dispose(); } catch (e) {} });
+  }
+  window._echartInstances = [];
+}
+
+function renderCharts(analysis) {
+  var pool = [];
+  CHART_BUILDERS.forEach(function (b) {
+    try {
+      var r = b.build(analysis);
+      if (r) pool.push(r);
+    } catch (e) { console.warn('图表生成失败:', b.key, e); }
+  });
+
+  var grid = document.getElementById('chartsGrid');
+  disposeCharts();
+  grid.innerHTML = '';
+
+  if (pool.length === 0) {
+    grid.innerHTML = '<div class="chart-hint" style="grid-column: span 12;">当前数据暂未识别出可生成图表的结构，请尝试上传其它 CSV。</div>';
+    return;
+  }
+
+  var picked = shuffle(pool.slice()).slice(0, Math.min(6, pool.length));
+  var pattern = SIZE_PATTERNS[Math.floor(Math.random() * SIZE_PATTERNS.length)];
+
+  picked.forEach(function (chart, idx) {
+    var span = pattern[idx % pattern.length] || 'span-4';
+    var card = document.createElement('div');
+    card.className = 'chart-card ' + span;
+    card.style.animationDelay = (idx * 60) + 'ms';
+    var html = '<div class="chart-title">' + chart.title + '</div>';
+    if (chart.subtitle) html += '<div class="chart-subtitle">' + chart.subtitle + '</div>';
+    html += '<div class="chart-body"></div>';
+    card.innerHTML = html;
+    grid.appendChild(card);
+
+    var body = card.querySelector('.chart-body');
+    if (chart.html) {
+      body.innerHTML = chart.html;
+      // 动画进度条
+      setTimeout(function () {
+        var fills = body.querySelectorAll('.text-rank-fill');
+        fills.forEach(function (f) { f.style.width = f.getAttribute('data-w') + '%'; });
+      }, 100);
+    } else if (chart.option) {
+      var inst = echarts.init(body);
+      inst.setOption(chart.option);
+      window._echartInstances.push(inst);
+    } else if (chart.hint) {
+      body.className = 'chart-hint';
+      body.textContent = chart.hint;
+    }
+  });
+
+  // 适配尺寸
+  setTimeout(function () {
+    if (window._echartInstances) {
+      window._echartInstances.forEach(function (c) { try { c.resize(); } catch (e) {} });
+    }
+  }, 50);
+}
+
+function renderDashboard(data) {
+  var analysis = analyzeData(data);
+  if (!analysis) return;
+  window._analysis = analysis;
+  renderCards(analysis);
+  renderCharts(analysis);
+}
+
+function randomLayout() {
+  if (!window._analysis) {
+    if (!window._csvData) return;
+    window._analysis = analyzeData(window._csvData);
+  }
+  if (!window._analysis) return;
+  renderCharts(window._analysis);
+}
+
+// 窗口尺寸变化时重绘图表
+window.addEventListener('resize', function () {
+  if (window._echartInstances) {
+    window._echartInstances.forEach(function (c) { try { c.resize(); } catch (e) {} });
+  }
+});
+
+function showUpload() {
+  dashboardPage.style.display = 'none';
+  uploadPage.style.display = 'flex';
+  document.getElementById('fileInput').value = '';
+}
+
+// ============ CSV 读取 ============
+function parseCSVText(text, fileName) {
+  Papa.parse(text, {
+    header: true,
+    skipEmptyLines: true,
+    complete: function (results) {
+      if (!results.data || results.data.length === 0) {
+        alert('未读取到有效数据，请检查 CSV 文件内容。');
+        return;
+      }
+      showDashboard(fileName, results.data);
+    },
+    error: function (err) {
+      alert('CSV 解析失败：' + err.message);
+    }
+  });
+}
+
+function handleFile(file) {
+  if (!file) return;
+  if (!/\.csv$/i.test(file.name)) {
+    alert('请上传 .csv 格式的文件。');
+    return;
+  }
+  var reader = new FileReader();
+  reader.onload = function (e) {
+    parseCSVText(e.target.result, file.name);
+  };
+  reader.onerror = function () {
+    alert('文件读取失败，请重试。');
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ============ 上传页交互 ============
+var uploadPanel = document.getElementById('uploadPanel');
+var fileInput = document.getElementById('fileInput');
+var selectBtn = document.getElementById('selectBtn');
+var sampleBtn = document.getElementById('sampleBtn');
+
+selectBtn.addEventListener('click', function () {
+  fileInput.click();
+});
+
+fileInput.addEventListener('change', function () {
+  if (fileInput.files && fileInput.files[0]) {
+    handleFile(fileInput.files[0]);
+  }
+});
+
+sampleBtn.addEventListener('click', function () {
+  parseCSVText(SAMPLE_CSV, '考研示例数据.csv');
+});
+
+// 拖拽
+['dragenter', 'dragover'].forEach(function (evt) {
+  uploadPanel.addEventListener(evt, function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadPanel.classList.add('dragover');
+  });
+});
+['dragleave', 'drop'].forEach(function (evt) {
+  uploadPanel.addEventListener(evt, function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadPanel.classList.remove('dragover');
+  });
+});
+uploadPanel.addEventListener('drop', function (e) {
+  var files = e.dataTransfer && e.dataTransfer.files;
+  if (files && files[0]) {
+    handleFile(files[0]);
+  }
+});
+
+// 阻止整页拖拽默认行为，避免误打开文件
+['dragover', 'drop'].forEach(function (evt) {
+  window.addEventListener(evt, function (e) {
+    if (e.target !== uploadPanel && !uploadPanel.contains(e.target)) {
+      e.preventDefault();
+    }
+  });
+});
+
+// ============ 大屏按钮 ============
+document.getElementById('reuploadBtn').addEventListener('click', showUpload);
+document.getElementById('randomBtn').addEventListener('click', randomLayout);
+document.getElementById('adjustBtn').addEventListener('click', function () {
+  alert('调整内容功能将在下一步实现。');
+});
+</script>
+</body>
+</html>
